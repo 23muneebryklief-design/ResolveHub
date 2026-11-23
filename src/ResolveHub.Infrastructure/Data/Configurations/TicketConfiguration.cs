@@ -4,8 +4,7 @@ using ResolveHub.Domain.Entities;
 
 namespace ResolveHub.Infrastructure.Data.Configurations;
 
-public class TicketConfiguration
-    : IEntityTypeConfiguration<Ticket>
+public class TicketConfiguration : IEntityTypeConfiguration<Ticket>
 {
     public void Configure(EntityTypeBuilder<Ticket> builder)
     {
@@ -47,30 +46,25 @@ public class TicketConfiguration
         builder.Property(x => x.UpdatedAtUtc)
             .IsRequired();
 
-        // Organisation relationship
         builder.HasOne(x => x.Organisation)
             .WithMany(x => x.Tickets)
             .HasForeignKey(x => x.OrganisationId)
             .OnDelete(DeleteBehavior.Restrict);
 
-        // Requester relationship
         builder.HasOne(x => x.Requester)
             .WithMany(x => x.RequestedTickets)
             .HasForeignKey(x => x.RequesterId)
             .OnDelete(DeleteBehavior.Restrict);
 
-        // Assignee relationship
         builder.HasOne(x => x.Assignee)
             .WithMany(x => x.AssignedTickets)
             .HasForeignKey(x => x.AssigneeId)
             .OnDelete(DeleteBehavior.Restrict);
 
-        builder.HasIndex(x => new
-        {
-            x.OrganisationId,
-            x.Status
-        });
-
+        // Ticket query indexes
+        builder.HasIndex(x => x.Status);
+        builder.HasIndex(x => x.Priority);
+        builder.HasIndex(x => new { x.OrganisationId, x.Status });
         builder.HasIndex(x => x.AssigneeId);
     }
 }

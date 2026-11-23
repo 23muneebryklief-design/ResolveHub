@@ -170,10 +170,14 @@ namespace ResolveHub.Infrastructure.Data.Migrations
 
                     b.HasIndex("AssigneeId");
 
+                    b.HasIndex("Priority");
+
                     b.HasIndex("Reference")
                         .IsUnique();
 
                     b.HasIndex("RequesterId");
+
+                    b.HasIndex("Status");
 
                     b.HasIndex("OrganisationId", "Status");
 
