@@ -109,10 +109,8 @@ namespace ResolveHub.Infrastructure.Data.Migrations
                     b.Property<Guid?>("AssigneeId")
                         .HasColumnType("uniqueidentifier");
 
-                    b.Property<string>("Category")
-                        .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("nvarchar(100)");
+                    b.Property<Guid>("CategoryId")
+                        .HasColumnType("uniqueidentifier");
 
                     b.Property<DateTimeOffset?>("ClosedAtUtc")
                         .HasColumnType("datetimeoffset");
@@ -170,6 +168,8 @@ namespace ResolveHub.Infrastructure.Data.Migrations
 
                     b.HasIndex("AssigneeId");
 
+                    b.HasIndex("CategoryId");
+
                     b.HasIndex("Priority");
 
                     b.HasIndex("Reference")
@@ -182,6 +182,77 @@ namespace ResolveHub.Infrastructure.Data.Migrations
                     b.HasIndex("OrganisationId", "Status");
 
                     b.ToTable("Tickets", (string)null);
+                });
+
+            modelBuilder.Entity("ResolveHub.Domain.Entities.TicketCategory", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Code")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Code")
+                        .IsUnique();
+
+                    b.ToTable("TicketCategories", (string)null);
+
+                    b.HasData(
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000001"),
+                            Code = "ACCOUNT_ACCESS",
+                            IsActive = true,
+                            Name = "Account & Access"
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000002"),
+                            Code = "BILLING_PAYMENTS",
+                            IsActive = true,
+                            Name = "Billing & Payments"
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000003"),
+                            Code = "TECHNICAL_SUPPORT",
+                            IsActive = true,
+                            Name = "Technical Support"
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000004"),
+                            Code = "BUG_REPORT",
+                            IsActive = true,
+                            Name = "Bug Report"
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000005"),
+                            Code = "FEATURE_REQUEST",
+                            IsActive = true,
+                            Name = "Feature Request"
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000006"),
+                            Code = "GENERAL_ENQUIRY",
+                            IsActive = true,
+                            Name = "General Enquiry"
+                        });
                 });
 
             modelBuilder.Entity("ResolveHub.Domain.Entities.TicketComment", b =>
@@ -268,6 +339,12 @@ namespace ResolveHub.Infrastructure.Data.Migrations
                         .HasForeignKey("AssigneeId")
                         .OnDelete(DeleteBehavior.Restrict);
 
+                    b.HasOne("ResolveHub.Domain.Entities.TicketCategory", "Category")
+                        .WithMany("Tickets")
+                        .HasForeignKey("CategoryId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
                     b.HasOne("ResolveHub.Domain.Entities.Organisation", "Organisation")
                         .WithMany("Tickets")
                         .HasForeignKey("OrganisationId")
@@ -281,6 +358,8 @@ namespace ResolveHub.Infrastructure.Data.Migrations
                         .IsRequired();
 
                     b.Navigation("Assignee");
+
+                    b.Navigation("Category");
 
                     b.Navigation("Organisation");
 
@@ -348,6 +427,11 @@ namespace ResolveHub.Infrastructure.Data.Migrations
                     b.Navigation("Comments");
 
                     b.Navigation("HistoryEntries");
+                });
+
+            modelBuilder.Entity("ResolveHub.Domain.Entities.TicketCategory", b =>
+                {
+                    b.Navigation("Tickets");
                 });
 #pragma warning restore 612, 618
         }

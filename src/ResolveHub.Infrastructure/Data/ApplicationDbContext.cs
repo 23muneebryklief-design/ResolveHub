@@ -22,6 +22,8 @@ public class ApplicationDbContext : DbContext
 
     public DbSet<TicketHistory> TicketHistory => Set<TicketHistory>();
 
+    public DbSet<TicketCategory> TicketCategories => Set<TicketCategory>();
+
     // Apply entity configurations
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

@@ -12,7 +12,9 @@ public class Ticket
 
     public string Description { get; set; } = string.Empty;
 
-    public string Category { get; set; } = string.Empty;
+    public Guid CategoryId { get; set; }
+
+    public TicketCategory Category { get; set; } = null!;
 
     public TicketPriority Priority { get; set; } = TicketPriority.Normal;
 

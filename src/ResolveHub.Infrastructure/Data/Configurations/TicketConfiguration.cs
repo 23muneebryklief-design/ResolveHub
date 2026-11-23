@@ -27,9 +27,10 @@ public class TicketConfiguration : IEntityTypeConfiguration<Ticket>
             .IsRequired()
             .HasMaxLength(4000);
 
-        builder.Property(x => x.Category)
-            .IsRequired()
-            .HasMaxLength(100);
+        builder.HasOne(x => x.Category)
+            .WithMany(x => x.Tickets)
+            .HasForeignKey(x => x.CategoryId)
+            .OnDelete(DeleteBehavior.Restrict);
 
         builder.Property(x => x.Priority)
             .IsRequired();
