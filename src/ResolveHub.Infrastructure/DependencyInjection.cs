@@ -1,6 +1,8 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using ResolveHub.Domain.Interfaces;
 using ResolveHub.Infrastructure.Data;
+using ResolveHub.Infrastructure.Services;
 
 namespace ResolveHub.Infrastructure
 {
@@ -10,11 +12,12 @@ namespace ResolveHub.Infrastructure
             this IServiceCollection services,
             string connectionString)
         {
-            // Register database context
             services.AddDbContext<ApplicationDbContext>(options =>
                 options.UseSqlServer(connectionString));
 
-            // Register database health check
+            services.AddScoped<ITicketReferenceGenerator, TicketReferenceGenerator>();
+            services.AddScoped<TicketCreationService>();
+
             services.AddHealthChecks()
                 .AddDbContextCheck<ApplicationDbContext>("database");
 

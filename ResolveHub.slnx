@@ -4,4 +4,7 @@
     <Project Path="src/ResolveHub.Domain/ResolveHub.Domain.csproj" />
     <Project Path="src/ResolveHub.Infrastructure/ResolveHub.Infrastructure.csproj" />
   </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/ResolveHub.Tests/ResolveHub.Tests.csproj" />
+  </Folder>
 </Solution>
