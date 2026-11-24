@@ -1,16 +1,18 @@
-﻿using ResolveHub.Domain.Enums;
+﻿using Microsoft.AspNetCore.Identity;
+using ResolveHub.Domain.Enums;
 
 namespace ResolveHub.Domain.Entities;
 
-public class ApplicationUser
+public class ApplicationUser : IdentityUser<Guid>
 {
-    public Guid Id { get; set; } = Guid.NewGuid();
+    public ApplicationUser()
+    {
+        Id = Guid.NewGuid();
+    }
 
     public string FirstName { get; set; } = string.Empty;
 
     public string LastName { get; set; } = string.Empty;
-
-    public string Email { get; set; } = string.Empty;
 
     public UserRole Role { get; set; }
 
@@ -20,7 +22,6 @@ public class ApplicationUser
 
     public DateTimeOffset CreatedAtUtc { get; set; } = DateTimeOffset.UtcNow;
 
-    // Navigation properties
     public Organisation? Organisation { get; set; }
 
     public ICollection<Ticket> RequestedTickets { get; set; }

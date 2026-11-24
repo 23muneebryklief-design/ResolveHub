@@ -1,9 +1,12 @@
-﻿using Microsoft.EntityFrameworkCore;
+﻿using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore;
 using ResolveHub.Domain.Entities;
 
 namespace ResolveHub.Infrastructure.Data;
 
-public class ApplicationDbContext : DbContext
+public class ApplicationDbContext
+    : IdentityDbContext<ApplicationUser, IdentityRole<Guid>, Guid>
 {
     public ApplicationDbContext(
         DbContextOptions<ApplicationDbContext> options)
@@ -11,10 +14,7 @@ public class ApplicationDbContext : DbContext
     {
     }
 
-    // Database entity sets
     public DbSet<Organisation> Organisations => Set<Organisation>();
-
-    public DbSet<ApplicationUser> Users => Set<ApplicationUser>();
 
     public DbSet<Ticket> Tickets => Set<Ticket>();
 
@@ -24,7 +24,6 @@ public class ApplicationDbContext : DbContext
 
     public DbSet<TicketCategory> TicketCategories => Set<TicketCategory>();
 
-    // Apply entity configurations
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);

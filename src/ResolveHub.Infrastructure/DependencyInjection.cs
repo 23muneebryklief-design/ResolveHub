@@ -1,5 +1,7 @@
+using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using ResolveHub.Domain.Entities;
 using ResolveHub.Domain.Interfaces;
 using ResolveHub.Infrastructure.Data;
 using ResolveHub.Infrastructure.Services;
@@ -14,6 +16,11 @@ namespace ResolveHub.Infrastructure
         {
             services.AddDbContext<ApplicationDbContext>(options =>
                 options.UseSqlServer(connectionString));
+
+            services
+                .AddIdentityCore<ApplicationUser>()
+                .AddRoles<IdentityRole<Guid>>()
+                .AddEntityFrameworkStores<ApplicationDbContext>();
 
             services.AddScoped<ITicketReferenceGenerator, TicketReferenceGenerator>();
             services.AddScoped<TicketCreationService>();
