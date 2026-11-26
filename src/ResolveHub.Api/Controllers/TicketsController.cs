@@ -137,7 +137,9 @@ public class TicketsController : ControllerBase
 
     [HttpGet("{ticketId:guid}/comments")]
     [Authorize(Policy = "Tickets.Read")]
-    [ProducesResponseType(typeof(IReadOnlyList<TicketCommentResponse>), StatusCodes.Status200OK)]
+    [ProducesResponseType(
+        typeof(IReadOnlyList<TicketCommentResponse>),
+        StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -171,6 +173,8 @@ public class TicketsController : ControllerBase
             .AsNoTracking()
             .Where(comment => comment.TicketId == ticketId);
 
+        // Customers must never receive internal notes.
+        // This filter is applied at database query level.
         if (User.IsInRole("Customer"))
         {
             comments = comments.Where(comment =>
@@ -179,6 +183,7 @@ public class TicketsController : ControllerBase
 
         var responses = await comments
             .OrderBy(comment => comment.CreatedAtUtc)
+            .ThenBy(comment => comment.Id)
             .Select(comment => new TicketCommentResponse
             {
                 Id = comment.Id,
@@ -195,7 +200,9 @@ public class TicketsController : ControllerBase
 
     [HttpGet("{ticketId:guid}/history")]
     [Authorize(Policy = "Tickets.Read")]
-    [ProducesResponseType(typeof(IReadOnlyList<TicketHistoryResponse>), StatusCodes.Status200OK)]
+    [ProducesResponseType(
+        typeof(IReadOnlyList<TicketHistoryResponse>),
+        StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -251,7 +258,9 @@ public class TicketsController : ControllerBase
 
     [HttpPost("{ticketId:guid}/comments")]
     [Authorize(Policy = "Tickets.Comment")]
-    [ProducesResponseType(typeof(TicketCommentResponse), StatusCodes.Status201Created)]
+    [ProducesResponseType(
+        typeof(TicketCommentResponse),
+        StatusCodes.Status201Created)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
@@ -273,6 +282,33 @@ public class TicketsController : ControllerBase
             return Forbid();
         }
 
+        if (!Enum.IsDefined(typeof(CommentVisibility), request.Visibility))
+        {
+            return BadRequest(new
+            {
+                error = "Invalid comment visibility."
+            });
+        }
+
+        if (string.IsNullOrWhiteSpace(request.Content))
+        {
+            return BadRequest(new
+            {
+                error = "Comment content cannot be empty."
+            });
+        }
+
+        var isInternalUser =
+            User.IsInRole("SupportAgent")
+            || User.IsInRole("Administrator");
+
+        // Customers may only create customer-visible comments.
+        if (request.Visibility == CommentVisibility.Internal
+            && !isInternalUser)
+        {
+            return Forbid();
+        }
+
         var tickets = _dbContext.Tickets.AsNoTracking();
 
         if (organisationId.HasValue)
@@ -290,16 +326,31 @@ public class TicketsController : ControllerBase
             return NotFound();
         }
 
+        var createdAtUtc = DateTimeOffset.UtcNow;
+
         var comment = new TicketComment
         {
             TicketId = ticketId,
             AuthorId = authorId,
-            Content = request.Content,
-            Visibility = CommentVisibility.CustomerVisible,
-            CreatedAtUtc = DateTimeOffset.UtcNow
+            Content = request.Content.Trim(),
+            Visibility = request.Visibility,
+            CreatedAtUtc = createdAtUtc
         };
 
+        var historyEntry = new TicketHistory
+        {
+            TicketId = ticketId,
+            ActorId = authorId,
+            EventType = TicketHistoryEventType.CommentAdded,
+            PreviousValue = null,
+            NewValue = request.Visibility.ToString(),
+            CreatedAtUtc = createdAtUtc
+        };
+
+        // Save the comment and its audit entry atomically.
         _dbContext.TicketComments.Add(comment);
+        _dbContext.TicketHistory.Add(historyEntry);
+
         await _dbContext.SaveChangesAsync(cancellationToken);
 
         var response = new TicketCommentResponse
