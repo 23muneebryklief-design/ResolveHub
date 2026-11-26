@@ -26,6 +26,7 @@ namespace ResolveHub.Infrastructure
             services.AddScoped<ITicketReferenceGenerator, TicketReferenceGenerator>();
             services.AddScoped<TicketCreationService>();
             services.AddScoped<TicketManagementService>();
+            services.AddScoped<TicketHistoryService>();
 
             services.AddHealthChecks()
                 .AddDbContextCheck<ApplicationDbContext>("database");

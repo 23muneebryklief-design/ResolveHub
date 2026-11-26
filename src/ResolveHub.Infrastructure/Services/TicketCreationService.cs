@@ -70,6 +70,8 @@ public class TicketCreationService
             throw new ArgumentOutOfRangeException(nameof(priority));
         }
 
+        var now = DateTimeOffset.UtcNow;
+
         var ticket = new Ticket
         {
             Reference = await _referenceGenerator.GenerateAsync(
@@ -81,11 +83,21 @@ public class TicketCreationService
             Status = TicketStatus.Open,
             OrganisationId = organisationId,
             RequesterId = requesterId,
-            CreatedAtUtc = DateTimeOffset.UtcNow,
-            UpdatedAtUtc = DateTimeOffset.UtcNow
+            CreatedAtUtc = now,
+            UpdatedAtUtc = now
         };
 
         _dbContext.Tickets.Add(ticket);
+
+        _dbContext.TicketHistory.Add(new TicketHistory
+        {
+            Ticket = ticket,
+            ActorId = requesterId,
+            EventType = TicketHistoryEventType.TicketCreated,
+            PreviousValue = null,
+            NewValue = ticket.Status.ToString(),
+            CreatedAtUtc = now
+        });
 
         await _dbContext.SaveChangesAsync(cancellationToken);
 

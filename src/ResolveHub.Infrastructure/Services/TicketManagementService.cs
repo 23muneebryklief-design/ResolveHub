@@ -21,44 +21,26 @@ public class TicketManagementService
         Guid actorId,
         CancellationToken cancellationToken = default)
     {
-        var actor = await GetPermittedActorAsync(
-            actorId,
+        var actor = await GetPermittedActorAsync(actorId, cancellationToken);
+        var ticket = await FindAccessibleTicketAsync(ticketId, actor, cancellationToken);
+        if (ticket is null) return null;
+
+        var assignee = await _dbContext.Users.SingleOrDefaultAsync(
+            user => user.Id == assigneeId && user.IsActive
+                && user.Role == UserRole.SupportAgent
+                && user.OrganisationId == ticket.OrganisationId,
             cancellationToken);
-
-        var ticket = await FindAccessibleTicketAsync(
-            ticketId,
-            actor,
-            cancellationToken);
-
-        if (ticket is null)
-        {
-            return null;
-        }
-
-        var assignee = await _dbContext.Users
-            .SingleOrDefaultAsync(
-                user => user.Id == assigneeId
-                    && user.IsActive
-                    && user.Role == UserRole.SupportAgent
-                    && user.OrganisationId == ticket.OrganisationId,
-                cancellationToken);
 
         if (assignee is null)
-        {
             throw new InvalidOperationException(
-                "The assignee must be an active support agent " +
-                "belonging to the ticket's organisation.");
-        }
+                "The assignee must be an active support agent belonging to the ticket's organisation.");
 
         if (ticket.AssigneeId == assigneeId)
-        {
             throw new InvalidOperationException(
                 "The ticket is already assigned to this support agent.");
-        }
 
         var now = DateTimeOffset.UtcNow;
         var previousAssigneeId = ticket.AssigneeId;
-
         ticket.AssigneeId = assigneeId;
         ticket.UpdatedAtUtc = now;
 
@@ -73,7 +55,6 @@ public class TicketManagementService
         });
 
         await _dbContext.SaveChangesAsync(cancellationToken);
-
         return ticket;
     }
 
@@ -85,41 +66,23 @@ public class TicketManagementService
         CancellationToken cancellationToken = default)
     {
         if (!Enum.IsDefined(typeof(TicketStatus), newStatus))
-        {
             throw new ArgumentOutOfRangeException(nameof(newStatus));
-        }
 
-        var actor = await GetPermittedActorAsync(
-            actorId,
-            cancellationToken);
-
-        var ticket = await FindAccessibleTicketAsync(
-            ticketId,
-            actor,
-            cancellationToken);
-
-        if (ticket is null)
-        {
-            return null;
-        }
+        var actor = await GetPermittedActorAsync(actorId, cancellationToken);
+        var ticket = await FindAccessibleTicketAsync(ticketId, actor, cancellationToken);
+        if (ticket is null) return null;
 
         if (!IsAllowedTransition(ticket.Status, newStatus))
-        {
             throw new InvalidOperationException(
-                $"The ticket cannot be moved from {ticket.Status} " +
-                $"to {newStatus}.");
-        }
+                $"The ticket cannot be moved from {ticket.Status} to {newStatus}.");
 
         if (newStatus == TicketStatus.Resolved
             && string.IsNullOrWhiteSpace(resolutionNotes))
-        {
             throw new InvalidOperationException(
                 "Resolution notes are required when resolving a ticket.");
-        }
 
         var now = DateTimeOffset.UtcNow;
         var previousStatus = ticket.Status;
-
         ticket.Status = newStatus;
         ticket.UpdatedAtUtc = now;
 
@@ -143,10 +106,8 @@ public class TicketManagementService
         {
             TicketStatus.Resolved => TicketHistoryEventType.Resolved,
             TicketStatus.Closed => TicketHistoryEventType.Closed,
-            TicketStatus.Open when
-                previousStatus == TicketStatus.Resolved
-                || previousStatus == TicketStatus.Closed
-                    => TicketHistoryEventType.Reopened,
+            TicketStatus.Open when previousStatus == TicketStatus.Resolved
+                || previousStatus == TicketStatus.Closed => TicketHistoryEventType.Reopened,
             _ => TicketHistoryEventType.StatusChanged
         };
 
@@ -161,71 +122,101 @@ public class TicketManagementService
         });
 
         await _dbContext.SaveChangesAsync(cancellationToken);
+        return ticket;
+    }
+
+    public async Task<Ticket?> UpdatePriorityAsync(
+        Guid ticketId,
+        TicketPriority newPriority,
+        Guid actorId,
+        CancellationToken cancellationToken = default)
+    {
+        if (!Enum.IsDefined(typeof(TicketPriority), newPriority))
+        {
+            throw new ArgumentOutOfRangeException(nameof(newPriority));
+        }
+
+        var actor = await GetPermittedActorAsync(
+            actorId,
+            cancellationToken);
+
+        var ticket = await FindAccessibleTicketAsync(
+            ticketId,
+            actor,
+            cancellationToken);
+
+        if (ticket is null)
+        {
+            return null;
+        }
+
+        if (ticket.Priority == newPriority)
+        {
+            throw new InvalidOperationException(
+                "The ticket already has this priority.");
+        }
+
+        var now = DateTimeOffset.UtcNow;
+        var previousPriority = ticket.Priority;
+
+        ticket.Priority = newPriority;
+        ticket.UpdatedAtUtc = now;
+
+        _dbContext.TicketHistory.Add(new TicketHistory
+        {
+            TicketId = ticket.Id,
+            ActorId = actorId,
+            EventType = TicketHistoryEventType.PriorityChanged,
+            PreviousValue = previousPriority.ToString(),
+            NewValue = newPriority.ToString(),
+            CreatedAtUtc = now
+        });
+
+        await _dbContext.SaveChangesAsync(cancellationToken);
 
         return ticket;
     }
 
     private async Task<ApplicationUser> GetPermittedActorAsync(
-        Guid actorId,
-        CancellationToken cancellationToken)
+        Guid actorId, CancellationToken cancellationToken)
     {
-        var actor = await _dbContext.Users
-            .SingleOrDefaultAsync(
-                user => user.Id == actorId && user.IsActive,
-                cancellationToken);
+        var actor = await _dbContext.Users.SingleOrDefaultAsync(
+            user => user.Id == actorId && user.IsActive, cancellationToken);
 
         if (actor is null
             || (actor.Role != UserRole.SupportAgent
                 && actor.Role != UserRole.Administrator))
-        {
             throw new UnauthorizedAccessException(
                 "You are not permitted to manage tickets.");
-        }
 
-        if (actor.Role == UserRole.SupportAgent
-            && !actor.OrganisationId.HasValue)
-        {
+        if (actor.Role == UserRole.SupportAgent && !actor.OrganisationId.HasValue)
             throw new UnauthorizedAccessException(
                 "Your account is not assigned to an organisation.");
-        }
 
         return actor;
     }
 
     private async Task<Ticket?> FindAccessibleTicketAsync(
-        Guid ticketId,
-        ApplicationUser actor,
-        CancellationToken cancellationToken)
+        Guid ticketId, ApplicationUser actor, CancellationToken cancellationToken)
     {
         var query = _dbContext.Tickets.AsQueryable();
-
         if (actor.Role == UserRole.SupportAgent)
-        {
             query = query.Where(ticket =>
                 ticket.OrganisationId == actor.OrganisationId!.Value);
-        }
 
         return await query.SingleOrDefaultAsync(
-            ticket => ticket.Id == ticketId,
-            cancellationToken);
+            ticket => ticket.Id == ticketId, cancellationToken);
     }
 
-    private static bool IsAllowedTransition(
-        TicketStatus currentStatus,
-        TicketStatus newStatus)
+    private static bool IsAllowedTransition(TicketStatus currentStatus, TicketStatus newStatus)
     {
         return (currentStatus, newStatus) switch
         {
             (TicketStatus.Open, TicketStatus.InProgress) => true,
-
             (TicketStatus.InProgress, TicketStatus.Resolved) => true,
-
             (TicketStatus.Resolved, TicketStatus.Closed) => true,
-
             (TicketStatus.Resolved, TicketStatus.Open) => true,
-
             (TicketStatus.Closed, TicketStatus.Open) => true,
-
             _ => false
         };
     }

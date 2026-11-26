@@ -18,15 +18,18 @@ public class TicketsController : ControllerBase
     private readonly ApplicationDbContext _dbContext;
     private readonly TicketCreationService _ticketCreationService;
     private readonly TicketManagementService _ticketManagementService;
+    private readonly TicketHistoryService _ticketHistoryService;
 
     public TicketsController(
         ApplicationDbContext dbContext,
         TicketCreationService ticketCreationService,
-        TicketManagementService ticketManagementService)
+        TicketManagementService ticketManagementService,
+        TicketHistoryService ticketHistoryService)
     {
         _dbContext = dbContext;
         _ticketCreationService = ticketCreationService;
         _ticketManagementService = ticketManagementService;
+        _ticketHistoryService = ticketHistoryService;
     }
 
     [HttpGet]
@@ -186,6 +189,62 @@ public class TicketsController : ControllerBase
                 CreatedAtUtc = comment.CreatedAtUtc
             })
             .ToListAsync(cancellationToken);
+
+        return Ok(responses);
+    }
+
+    [HttpGet("{ticketId:guid}/history")]
+    [Authorize(Policy = "Tickets.Read")]
+    [ProducesResponseType(typeof(IReadOnlyList<TicketHistoryResponse>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<IReadOnlyList<TicketHistoryResponse>>> GetHistory(
+        Guid ticketId,
+        CancellationToken cancellationToken)
+    {
+        if (!TryGetTicketOrganisationScope(out var organisationId))
+        {
+            return Forbid();
+        }
+
+        var tickets = _dbContext.Tickets.AsNoTracking();
+
+        if (organisationId.HasValue)
+        {
+            tickets = tickets.Where(ticket =>
+                ticket.OrganisationId == organisationId.Value);
+        }
+
+        var ticketExists = await tickets.AnyAsync(
+            ticket => ticket.Id == ticketId,
+            cancellationToken);
+
+        if (!ticketExists)
+        {
+            return NotFound();
+        }
+
+        var history = await _ticketHistoryService.GetByTicketIdAsync(
+            ticketId,
+            cancellationToken);
+
+        var responses = history.Select(entry => new TicketHistoryResponse
+        {
+            Id = entry.Id,
+            TicketId = entry.TicketId,
+            ActorId = entry.ActorId,
+            Actor = new TicketUserSummaryResponse
+            {
+                Id = entry.Actor.Id,
+                FirstName = entry.Actor.FirstName,
+                LastName = entry.Actor.LastName
+            },
+            EventType = entry.EventType,
+            PreviousValue = entry.PreviousValue,
+            NewValue = entry.NewValue,
+            CreatedAtUtc = entry.CreatedAtUtc
+        }).ToList();
 
         return Ok(responses);
     }
@@ -430,6 +489,65 @@ public class TicketsController : ControllerBase
                 ticketId,
                 request.Status,
                 request.ResolutionNotes,
+                actorId,
+                cancellationToken);
+
+            if (ticket is null)
+            {
+                return NotFound();
+            }
+
+            var updatedTicket = await BuildTicketQuery()
+                .SingleAsync(
+                    item => item.Id == ticketId,
+                    cancellationToken);
+
+            return Ok(ToTicketResponse(updatedTicket));
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return Forbid();
+        }
+        catch (ArgumentException exception)
+        {
+            return BadRequest(new
+            {
+                error = exception.Message
+            });
+        }
+        catch (InvalidOperationException exception)
+        {
+            return BadRequest(new
+            {
+                error = exception.Message
+            });
+        }
+    }
+
+    [HttpPatch("{ticketId:guid}/priority")]
+    [Authorize(Policy = "Tickets.UpdatePriority")]
+    [ProducesResponseType(typeof(TicketResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<TicketResponse>> UpdatePriority(
+        Guid ticketId,
+        [FromBody] UpdateTicketPriorityRequest request,
+        CancellationToken cancellationToken)
+    {
+        if (!Guid.TryParse(
+                User.FindFirstValue(ClaimTypes.NameIdentifier),
+                out var actorId))
+        {
+            return Forbid();
+        }
+
+        try
+        {
+            var ticket = await _ticketManagementService.UpdatePriorityAsync(
+                ticketId,
+                request.Priority,
                 actorId,
                 cancellationToken);
 

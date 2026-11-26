@@ -108,6 +108,12 @@ builder.Services.AddAuthorization(options =>
         policy.RequireAuthenticatedUser();
         policy.RequireRole("SupportAgent", "Administrator");
     });
+
+    options.AddPolicy("Tickets.UpdatePriority", policy =>
+    {
+        policy.RequireAuthenticatedUser();
+        policy.RequireRole("SupportAgent", "Administrator");
+    });
 });
 
 var connectionString =

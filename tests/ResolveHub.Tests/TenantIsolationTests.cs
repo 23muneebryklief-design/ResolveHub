@@ -1,4 +1,3 @@
-
 using System.Net;
 using System.Net.Http.Json;
 using Microsoft.EntityFrameworkCore;
@@ -146,6 +145,24 @@ public sealed class TenantIsolationTests
         Assert.NotNull(ticket);
         Assert.Equal(OrganisationAId, ticket.OrganisationId);
         Assert.Equal(CustomerAId, ticket.RequesterId);
+
+        await using var scope = _factory.Services.CreateAsyncScope();
+
+        var dbContext = scope.ServiceProvider
+            .GetRequiredService<ApplicationDbContext>();
+
+        var history = await dbContext.TicketHistory
+            .AsNoTracking()
+            .Where(entry => entry.TicketId == ticket.Id)
+            .ToListAsync();
+
+        var creationEvent = Assert.Single(history);
+
+        Assert.Equal(TicketHistoryEventType.TicketCreated, creationEvent.EventType);
+        Assert.Equal(CustomerAId, creationEvent.ActorId);
+        Assert.Null(creationEvent.PreviousValue);
+        Assert.Equal(TicketStatus.Open.ToString(), creationEvent.NewValue);
+        Assert.Equal(ticket.CreatedAtUtc, creationEvent.CreatedAtUtc);
     }
 
     [Fact]
