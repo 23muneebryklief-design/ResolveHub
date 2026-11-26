@@ -17,13 +17,16 @@ public class TicketsController : ControllerBase
 {
     private readonly ApplicationDbContext _dbContext;
     private readonly TicketCreationService _ticketCreationService;
+    private readonly TicketManagementService _ticketManagementService;
 
     public TicketsController(
         ApplicationDbContext dbContext,
-        TicketCreationService ticketCreationService)
+        TicketCreationService ticketCreationService,
+        TicketManagementService ticketManagementService)
     {
         _dbContext = dbContext;
         _ticketCreationService = ticketCreationService;
+        _ticketManagementService = ticketManagementService;
     }
 
     [HttpGet]
@@ -335,6 +338,125 @@ public class TicketsController : ControllerBase
                 ToTicketResponse(createdTicket));
         }
         catch (ArgumentException exception)
+        {
+            return BadRequest(new
+            {
+                error = exception.Message
+            });
+        }
+    }
+
+    [HttpPost("{ticketId:guid}/assign")]
+    [Authorize(Policy = "Tickets.Assign")]
+    [ProducesResponseType(typeof(TicketResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<TicketResponse>> Assign(
+        Guid ticketId,
+        [FromBody] AssignTicketRequest request,
+        CancellationToken cancellationToken)
+    {
+        if (!Guid.TryParse(
+                User.FindFirstValue(ClaimTypes.NameIdentifier),
+                out var actorId))
+        {
+            return Forbid();
+        }
+
+        try
+        {
+            var ticket = await _ticketManagementService.AssignAsync(
+                ticketId,
+                request.AssigneeId,
+                actorId,
+                cancellationToken);
+
+            if (ticket is null)
+            {
+                return NotFound();
+            }
+
+            var updatedTicket = await BuildTicketQuery()
+                .SingleAsync(
+                    item => item.Id == ticketId,
+                    cancellationToken);
+
+            return Ok(ToTicketResponse(updatedTicket));
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return Forbid();
+        }
+        catch (ArgumentException exception)
+        {
+            return BadRequest(new
+            {
+                error = exception.Message
+            });
+        }
+        catch (InvalidOperationException exception)
+        {
+            return BadRequest(new
+            {
+                error = exception.Message
+            });
+        }
+    }
+
+    [HttpPatch("{ticketId:guid}/status")]
+    [Authorize(Policy = "Tickets.UpdateStatus")]
+    [ProducesResponseType(typeof(TicketResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<TicketResponse>> UpdateStatus(
+        Guid ticketId,
+        [FromBody] UpdateTicketStatusRequest request,
+        CancellationToken cancellationToken)
+    {
+        if (!Guid.TryParse(
+                User.FindFirstValue(ClaimTypes.NameIdentifier),
+                out var actorId))
+        {
+            return Forbid();
+        }
+
+        try
+        {
+            var ticket = await _ticketManagementService.UpdateStatusAsync(
+                ticketId,
+                request.Status,
+                request.ResolutionNotes,
+                actorId,
+                cancellationToken);
+
+            if (ticket is null)
+            {
+                return NotFound();
+            }
+
+            var updatedTicket = await BuildTicketQuery()
+                .SingleAsync(
+                    item => item.Id == ticketId,
+                    cancellationToken);
+
+            return Ok(ToTicketResponse(updatedTicket));
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return Forbid();
+        }
+        catch (ArgumentException exception)
+        {
+            return BadRequest(new
+            {
+                error = exception.Message
+            });
+        }
+        catch (InvalidOperationException exception)
         {
             return BadRequest(new
             {

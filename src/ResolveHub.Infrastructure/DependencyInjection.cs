@@ -1,3 +1,4 @@
+
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -24,6 +25,7 @@ namespace ResolveHub.Infrastructure
 
             services.AddScoped<ITicketReferenceGenerator, TicketReferenceGenerator>();
             services.AddScoped<TicketCreationService>();
+            services.AddScoped<TicketManagementService>();
 
             services.AddHealthChecks()
                 .AddDbContextCheck<ApplicationDbContext>("database");

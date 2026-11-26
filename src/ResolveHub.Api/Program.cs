@@ -1,3 +1,4 @@
+
 using System.Security.Claims;
 using System.Text;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
@@ -75,6 +76,7 @@ builder.Services
             RoleClaimType = ClaimTypes.Role
         };
     });
+
 builder.Services.AddAuthorization(options =>
 {
     options.AddPolicy("Tickets.Create", policy =>
@@ -93,6 +95,18 @@ builder.Services.AddAuthorization(options =>
     {
         policy.RequireAuthenticatedUser();
         policy.RequireRole("Customer", "SupportAgent", "Administrator");
+    });
+
+    options.AddPolicy("Tickets.Assign", policy =>
+    {
+        policy.RequireAuthenticatedUser();
+        policy.RequireRole("SupportAgent", "Administrator");
+    });
+
+    options.AddPolicy("Tickets.UpdateStatus", policy =>
+    {
+        policy.RequireAuthenticatedUser();
+        policy.RequireRole("SupportAgent", "Administrator");
     });
 });
 
