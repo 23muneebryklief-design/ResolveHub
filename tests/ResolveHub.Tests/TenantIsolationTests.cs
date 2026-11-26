@@ -1,3 +1,4 @@
+
 using System.Net;
 using System.Net.Http.Json;
 using Microsoft.EntityFrameworkCore;
@@ -49,6 +50,7 @@ public sealed class TenantIsolationTests
         using var response = await client.GetAsync("/api/Tickets");
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
         var tickets = await response.Content
             .ReadFromJsonAsync<List<TicketResponse>>();
 
@@ -107,10 +109,12 @@ public sealed class TenantIsolationTests
             $"/api/Tickets/{TicketAId}/comments");
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
         var comments = await response.Content
             .ReadFromJsonAsync<List<TicketCommentResponse>>();
 
         Assert.NotNull(comments);
+
         var comment = Assert.Single(comments);
         Assert.Equal("Customer visible comment", comment.Content);
     }
@@ -128,13 +132,13 @@ public sealed class TenantIsolationTests
                 Subject = "Tenant scoped ticket",
                 Description = "Created with server-side tenant identity.",
                 CategoryId = CategoryId,
-                Priority = TicketPriority.Normal,
-                OrganisationId = OrganisationBId,
-                RequesterId = CustomerBId
+                Priority = TicketPriority.Normal
             });
 
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
-        var ticket = await response.Content.ReadFromJsonAsync<TicketResponse>();
+
+        var ticket = await response.Content
+            .ReadFromJsonAsync<TicketResponse>();
 
         Assert.NotNull(ticket);
         Assert.Equal(OrganisationAId, ticket.OrganisationId);
@@ -145,7 +149,9 @@ public sealed class TenantIsolationTests
     public async Task Customer_access_requires_an_organisation_claim()
     {
         await EnsureSeededAsync();
+
         using var client = _factory.CreateClient();
+
         client.DefaultRequestHeaders.Authorization =
             new System.Net.Http.Headers.AuthenticationHeaderValue(
                 "Bearer",
@@ -161,6 +167,7 @@ public sealed class TenantIsolationTests
     private HttpClient CreateCustomerClient()
     {
         var client = _factory.CreateClient();
+
         client.DefaultRequestHeaders.Authorization =
             new System.Net.Http.Headers.AuthenticationHeaderValue(
                 "Bearer",
@@ -168,18 +175,21 @@ public sealed class TenantIsolationTests
                     "Customer",
                     CustomerAId,
                     OrganisationAId));
+
         return client;
     }
 
     private async Task EnsureSeededAsync()
     {
         await using var scope = _factory.Services.CreateAsyncScope();
+
         var dbContext = scope.ServiceProvider
             .GetRequiredService<ApplicationDbContext>();
 
         await dbContext.Database.MigrateAsync();
 
-        if (await dbContext.Tickets.AnyAsync(ticket => ticket.Id == TicketAId))
+        if (await dbContext.Tickets.AnyAsync(
+                ticket => ticket.Id == TicketAId))
         {
             return;
         }
@@ -206,11 +216,26 @@ public sealed class TenantIsolationTests
             "customer-b@resolvehub.test",
             organisationB);
 
-        dbContext.Organisations.AddRange(organisationA, organisationB);
-        dbContext.Users.AddRange(customerA, customerB);
+        dbContext.Organisations.AddRange(
+            organisationA,
+            organisationB);
+
+        dbContext.Users.AddRange(
+            customerA,
+            customerB);
+
         dbContext.Tickets.AddRange(
-            CreateTicket(TicketAId, "TEST-TENANT-A", OrganisationAId, CustomerAId),
-            CreateTicket(TicketBId, "TEST-TENANT-B", OrganisationBId, CustomerBId));
+            CreateTicket(
+                TicketAId,
+                "TEST-TENANT-A",
+                OrganisationAId,
+                CustomerAId),
+            CreateTicket(
+                TicketBId,
+                "TEST-TENANT-B",
+                OrganisationBId,
+                CustomerBId));
+
         dbContext.TicketComments.AddRange(
             new TicketComment
             {

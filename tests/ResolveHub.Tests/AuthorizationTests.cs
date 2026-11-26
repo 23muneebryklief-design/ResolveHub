@@ -1,3 +1,4 @@
+
 using System.IdentityModel.Tokens.Jwt;
 using System.Net;
 using System.Net.Http.Headers;
@@ -128,7 +129,9 @@ public sealed class ResolveHubApiFactory
                     ["Jwt:Audience"] = Audience,
                     ["Jwt:Key"] = SigningKey,
                     ["Jwt:ExpiresMinutes"] = "5",
-                    ["ConnectionStrings:DefaultConnection"] = TestConnectionString
+                    ["ConnectionStrings:DefaultConnection"] = TestConnectionString,
+                    ["BootstrapCustomer:Email"] = string.Empty,
+                    ["BootstrapCustomer:Password"] = string.Empty
                 });
         });
 

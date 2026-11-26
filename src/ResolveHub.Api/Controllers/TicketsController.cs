@@ -1,3 +1,4 @@
+
 using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -225,25 +226,59 @@ public class TicketsController : ControllerBase
         [FromBody] CreateTicketRequest request,
         CancellationToken cancellationToken)
     {
-        var organisationId = request.OrganisationId;
-        var requesterId = request.RequesterId;
-
-        if (User.IsInRole("Customer"))
+        if (!Guid.TryParse(
+                User.FindFirstValue(ClaimTypes.NameIdentifier),
+                out var requesterId))
         {
-            if (!Guid.TryParse(
-                    User.FindFirstValue(ClaimTypes.NameIdentifier),
-                    out requesterId)
-                || !TryGetCustomerOrganisationId(out organisationId))
+            return Forbid();
+        }
+
+        var authenticatedUser = await _dbContext.Users
+            .AsNoTracking()
+            .Where(user => user.Id == requesterId && user.IsActive)
+            .Select(user => new
             {
-                return Forbid();
-            }
+                user.Id,
+                user.OrganisationId,
+                user.Role
+            })
+            .SingleOrDefaultAsync(cancellationToken);
+
+        if (authenticatedUser is null)
+        {
+            return Forbid();
+        }
+
+        if (authenticatedUser.Role != UserRole.Customer
+            && authenticatedUser.Role != UserRole.SupportAgent
+            && authenticatedUser.Role != UserRole.Administrator)
+        {
+            return Forbid();
+        }
+
+        if (!authenticatedUser.OrganisationId.HasValue)
+        {
+            return Forbid();
+        }
+
+        var organisationId = authenticatedUser.OrganisationId.Value;
+
+        var organisationIsActive = await _dbContext.Organisations
+            .AnyAsync(
+                organisation => organisation.Id == organisationId
+                    && organisation.IsActive,
+                cancellationToken);
+
+        if (!organisationIsActive)
+        {
+            return Forbid();
         }
 
         try
         {
             var ticket = await _ticketCreationService.CreateAsync(
-                request.Subject,
-                request.Description,
+                request.Subject.Trim(),
+                request.Description.Trim(),
                 request.CategoryId,
                 request.Priority,
                 organisationId,
