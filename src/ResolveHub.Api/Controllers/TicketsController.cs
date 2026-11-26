@@ -28,30 +28,69 @@ public class TicketsController : ControllerBase
 
     [HttpGet]
     [Authorize(Policy = "Tickets.Read")]
-    [ProducesResponseType(typeof(IReadOnlyList<TicketResponse>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(TicketListResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
-    public async Task<ActionResult<IReadOnlyList<TicketResponse>>> GetAll(
+    public async Task<ActionResult<TicketListResponse>> GetAll(
+        [FromQuery] TicketListQuery filters,
         CancellationToken cancellationToken)
     {
-        var query = _dbContext.Tickets.AsNoTracking();
-
-        if (User.IsInRole("Customer"))
+        if (!TryGetTicketOrganisationScope(out var organisationId))
         {
-            if (!TryGetCustomerOrganisationId(out var organisationId))
-            {
-                return Forbid();
-            }
-
-            query = query.Where(ticket =>
-                ticket.OrganisationId == organisationId);
+            return Forbid();
         }
+
+        var query = BuildTicketQuery();
+
+        if (organisationId.HasValue)
+        {
+            query = query.Where(ticket =>
+                ticket.OrganisationId == organisationId.Value);
+        }
+
+        if (filters.Status.HasValue)
+        {
+            query = query.Where(ticket =>
+                ticket.Status == filters.Status.Value);
+        }
+
+        if (filters.Priority.HasValue)
+        {
+            query = query.Where(ticket =>
+                ticket.Priority == filters.Priority.Value);
+        }
+
+        if (filters.CategoryId.HasValue)
+        {
+            query = query.Where(ticket =>
+                ticket.CategoryId == filters.CategoryId.Value);
+        }
+
+        if (filters.AssigneeId.HasValue)
+        {
+            query = query.Where(ticket =>
+                ticket.AssigneeId == filters.AssigneeId.Value);
+        }
+
+        var totalCount = await query.CountAsync(cancellationToken);
 
         var tickets = await query
             .OrderByDescending(ticket => ticket.CreatedAtUtc)
+            .ThenByDescending(ticket => ticket.Id)
+            .Skip((filters.Page - 1) * filters.PageSize)
+            .Take(filters.PageSize)
             .ToListAsync(cancellationToken);
 
-        return Ok(tickets.Select(ToTicketResponse).ToList());
+        return Ok(new TicketListResponse
+        {
+            Items = tickets.Select(ToTicketResponse).ToList(),
+            Page = filters.Page,
+            PageSize = filters.PageSize,
+            TotalCount = totalCount,
+            TotalPages = (int)Math.Ceiling(
+                totalCount / (double)filters.PageSize)
+        });
     }
 
     [HttpGet("{ticketId:guid}")]
@@ -64,22 +103,23 @@ public class TicketsController : ControllerBase
         Guid ticketId,
         CancellationToken cancellationToken)
     {
-        var query = _dbContext.Tickets.AsNoTracking();
-
-        if (User.IsInRole("Customer"))
+        if (!TryGetTicketOrganisationScope(out var organisationId))
         {
-            if (!TryGetCustomerOrganisationId(out var organisationId))
-            {
-                return Forbid();
-            }
+            return Forbid();
+        }
 
+        var query = BuildTicketQuery();
+
+        if (organisationId.HasValue)
+        {
             query = query.Where(ticket =>
-                ticket.OrganisationId == organisationId);
+                ticket.OrganisationId == organisationId.Value);
         }
 
         var ticket = await query
-            .Where(ticket => ticket.Id == ticketId)
-            .SingleOrDefaultAsync(cancellationToken);
+            .SingleOrDefaultAsync(
+                item => item.Id == ticketId,
+                cancellationToken);
 
         if (ticket is null)
         {
@@ -99,17 +139,17 @@ public class TicketsController : ControllerBase
         Guid ticketId,
         CancellationToken cancellationToken)
     {
+        if (!TryGetTicketOrganisationScope(out var organisationId))
+        {
+            return Forbid();
+        }
+
         var tickets = _dbContext.Tickets.AsNoTracking();
 
-        if (User.IsInRole("Customer"))
+        if (organisationId.HasValue)
         {
-            if (!TryGetCustomerOrganisationId(out var organisationId))
-            {
-                return Forbid();
-            }
-
             tickets = tickets.Where(ticket =>
-                ticket.OrganisationId == organisationId);
+                ticket.OrganisationId == organisationId.Value);
         }
 
         var ticketExists = await tickets.AnyAsync(
@@ -166,17 +206,17 @@ public class TicketsController : ControllerBase
             return Forbid();
         }
 
+        if (!TryGetTicketOrganisationScope(out var organisationId))
+        {
+            return Forbid();
+        }
+
         var tickets = _dbContext.Tickets.AsNoTracking();
 
-        if (User.IsInRole("Customer"))
+        if (organisationId.HasValue)
         {
-            if (!TryGetCustomerOrganisationId(out var organisationId))
-            {
-                return Forbid();
-            }
-
             tickets = tickets.Where(ticket =>
-                ticket.OrganisationId == organisationId);
+                ticket.OrganisationId == organisationId.Value);
         }
 
         var ticketExists = await tickets.AnyAsync(
@@ -285,11 +325,14 @@ public class TicketsController : ControllerBase
                 requesterId,
                 cancellationToken);
 
-            var response = ToTicketResponse(ticket);
+            var createdTicket = await BuildTicketQuery()
+                .SingleAsync(
+                    item => item.Id == ticket.Id,
+                    cancellationToken);
 
             return StatusCode(
                 StatusCodes.Status201Created,
-                response);
+                ToTicketResponse(createdTicket));
         }
         catch (ArgumentException exception)
         {
@@ -300,11 +343,35 @@ public class TicketsController : ControllerBase
         }
     }
 
-    private bool TryGetCustomerOrganisationId(out Guid organisationId)
+    private IQueryable<Ticket> BuildTicketQuery()
     {
-        return Guid.TryParse(
-            User.FindFirst("organisation_id")?.Value,
-            out organisationId);
+        return _dbContext.Tickets
+            .AsNoTracking()
+            .Include(ticket => ticket.Category)
+            .Include(ticket => ticket.Requester)
+            .Include(ticket => ticket.Assignee);
+    }
+
+    private bool TryGetTicketOrganisationScope(
+        out Guid? organisationId)
+    {
+        organisationId = null;
+
+        if (User.IsInRole("Customer")
+            || User.IsInRole("SupportAgent"))
+        {
+            if (!Guid.TryParse(
+                    User.FindFirst("organisation_id")?.Value,
+                    out var parsedOrganisationId)
+                || parsedOrganisationId == Guid.Empty)
+            {
+                return false;
+            }
+
+            organisationId = parsedOrganisationId;
+        }
+
+        return true;
     }
 
     private static TicketResponse ToTicketResponse(Ticket ticket)
@@ -316,11 +383,28 @@ public class TicketsController : ControllerBase
             Subject = ticket.Subject,
             Description = ticket.Description,
             CategoryId = ticket.CategoryId,
+            CategoryName = ticket.Category.Name,
             Priority = ticket.Priority,
             Status = ticket.Status,
             OrganisationId = ticket.OrganisationId,
             RequesterId = ticket.RequesterId,
-            CreatedAtUtc = ticket.CreatedAtUtc
+            Requester = new TicketUserSummaryResponse
+            {
+                Id = ticket.Requester.Id,
+                FirstName = ticket.Requester.FirstName,
+                LastName = ticket.Requester.LastName
+            },
+            AssigneeId = ticket.AssigneeId,
+            Assignee = ticket.Assignee is null
+                ? null
+                : new TicketUserSummaryResponse
+                {
+                    Id = ticket.Assignee.Id,
+                    FirstName = ticket.Assignee.FirstName,
+                    LastName = ticket.Assignee.LastName
+                },
+            CreatedAtUtc = ticket.CreatedAtUtc,
+            UpdatedAtUtc = ticket.UpdatedAtUtc
         };
     }
 }

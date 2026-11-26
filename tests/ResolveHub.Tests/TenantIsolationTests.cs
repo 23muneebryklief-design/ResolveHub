@@ -51,12 +51,15 @@ public sealed class TenantIsolationTests
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
 
-        var tickets = await response.Content
-            .ReadFromJsonAsync<List<TicketResponse>>();
+        var ticketPage = await response.Content
+            .ReadFromJsonAsync<TicketListResponse>();
 
-        Assert.NotNull(tickets);
-        Assert.Contains(tickets, ticket => ticket.Id == TicketAId);
-        Assert.DoesNotContain(tickets, ticket => ticket.Id == TicketBId);
+        Assert.NotNull(ticketPage);
+        Assert.Equal(1, ticketPage.Page);
+        Assert.Equal(20, ticketPage.PageSize);
+        Assert.True(ticketPage.TotalCount >= 1);
+        Assert.Contains(ticketPage.Items, ticket => ticket.Id == TicketAId);
+        Assert.DoesNotContain(ticketPage.Items, ticket => ticket.Id == TicketBId);
     }
 
     [Fact]
